@@ -22,8 +22,6 @@
 #' @param type String. Either `dydx` for derivative, `diff` for difference, or `ratio` for log ratio. See description.
 #' @param re String. Either `estimated` to condition on estimated values, `zero` to set to zero, `at` to
 #' provide specific values, or `average` to average over the random effects.
-#' @param se String. Type of standard error to use, either `GLS` for the GLS standard errors, `KR` for
-#' Kenward-Roger estimated standard errors, or `KR2` for the improved Kenward-Roger correction.
 #' @param at Optional. A vector of strings naming the fixed effects for which a specified value is given.
 #' @param atmeans Optional. A vector of strings naming the fixed effects that will be set at their mean value.
 #' @param average Optional. A vector of strings naming the fixed effects which will be averaged over.
@@ -46,16 +44,14 @@
 #'        x = "Treatment",
 #'        type = "ratio",
 #'        average = c("x1","x2","x3","x4"),
-#'        re = "average",
-#'        se="GLS")
+#'        re = "average")
 #' summary(m1)
 #' ## stata default for margins command is to set random effects to zero
 #' m2 <- margin(fit,
 #'        x = "Treatment",
 #'        type = "ratio",
 #'        average = c("x1","x2","x3","x4"),
-#'        re = "zero",
-#'        se="GLS")
+#'        re = "zero")
 #' summary(m2)
 #' ## finally estimate a risk difference, with random effects at zero and fixed effects
 #' ## at mean values
@@ -63,11 +59,10 @@
 #'        x = "Treatment",
 #'        type = "diff",
 #'        atmeans = c("x1","x2","x3","x4"),
-#'        re = "zero",
-#'        se="GLS")
+#'        re = "zero")
 #' summary(m3)
 #' @export
-margin <- function(fit, x,type,re,se,at = c(),atmeans = c(),average=c(),
+margin <- function(fit, x,type,re,at = c(),atmeans = c(),average=c(),
                    xvals=c(1,0),atvals=c(),revals=c(),oim = FALSE, sampling = 250){
 
   if(is(fit,"glmmTMB")){
@@ -102,21 +97,17 @@ margin <- function(fit, x,type,re,se,at = c(),atmeans = c(),average=c(),
     stop("Fit should be glmerMod, glmmTMB, or Model class")
   }
 
-  model$mcmc_options$samps <- sampling
-  suppressMessages(suppressWarnings(model$mcmc_sample()))
-  result <- model$marginal(x = x,type = type,re = re,se = se,
-                           at = at,atmeans = atmeans,
-                           average=average,xvals=xvals,atvals=atvals,
-                           revals=revals,oim = oim)
-  out <- list(
-    result = result,
-    formula = f1,
-    x = x,
-    type = type,
-    se = se,
-    re = re,
-    sampling = sampling
-  )
+  suppressMessages(suppressWarnings(model$sample_u(sampling)))
+  X <- model$mean$X
+  colnames(X) <- gsub("b_","",names(model$mean$parameters))
+  out <- glmm_marginal(X, model$mean$parameters,
+                solve(model$information_matrix()), "binomial",
+                "Treatment", atmeans = c("x1","x2","x3","x4"),
+                type = "Diff", re_type = "Average",
+                zu_samples = model$covariance$Z %*% model$u())
+  out$family <- binomial()
+  out$formula <- f1
+  out$sampling <- sampling
   class(out) <- "margin"
 
   return(out)
@@ -139,23 +130,22 @@ margin <- function(fit, x,type,re,se,at = c(),atmeans = c(),average=c(),
 #'        x = "Treatment",
 #'        type = "ratio",
 #'        average = c("x1","x2","x3","x4"),
-#'        re = "average",
-#'        se="GLS")
+#'        re = "average")
 #' @export
 print.margin <- function(x, ...){
   digits = 4
   cat("Marginal Effects from Mixed Model")
   f1 <- as.character(x$formula)
   cat("\nFormula: ",f1[[2]]," ~ ",f1[[3]])
-  res <- round(x$result$margin,digits)
-  if(x$type == "ratio"){
+  res <- round(x$estimate,digits)
+  if(x$type == "Ratio"){
     cat("\nLog RR: ",res)
-  } else if(x$type == "diff"){
+  } else if(x$type == "Diff"){
     cat("\nRisk diff.: ",res)
   } else {
     cat("\nMarginal effect (dydx): ",res)
   }
-  cat(" SE: ",round(x$result$SE,digits))
+  cat(" SE: ",round(x$se,digits))
 }
 
 
@@ -176,8 +166,7 @@ print.margin <- function(x, ...){
 #'        x = "Treatment",
 #'        type = "ratio",
 #'        average = c("x1","x2","x3","x4"),
-#'        re = "average",
-#'        se="GLS")
+#'        re = "average")
 #' summary(m1)
 #' @export
 summary.margin <- function(object, ...){
@@ -185,18 +174,18 @@ summary.margin <- function(object, ...){
   cat("Marginal Effects from Mixed Model")
   f1 <- as.character(object$formula)
   cat("\nFormula: ",f1[[2]]," ~ ",f1[[3]])
-  if(object$type == "ratio"){
+  if(object$type == "Ratio"){
     name <- "Log RR "
-  } else if(object$type == "diff"){
+  } else if(object$type == "Diff"){
     name <- "Risk diff. "
   } else {
     name <- "Marginal effect (dydx) "
   }
   name <- paste0(name, "(",object$x,")")
   cat("\n\n")
-  out <- data.frame(est = round(object$result$margin, digits),
-                    se = round(object$result$SE, digits),
-                    z = round(object$result$margin/object$result$SE,digits))
+  out <- data.frame(est = round(object$estimate, digits),
+                    se = round(object$se, digits),
+                    z = round(object$estimate/object$se,digits))
   colnames(out) <- c("Estimate","Std. Err.","z value")
   rownames(out) <- name
   print(out)
@@ -231,16 +220,18 @@ summary.margin <- function(object, ...){
 #'        x = "Treatment",
 #'        type = "ratio",
 #'        average = c("x1","x2","x3","x4"),
-#'        re = "average",
-#'        se="GLS")
+#'        re = "average")
 #' confint(m1)
 #' @importFrom stats qnorm qt
 #' @export
  confint.margin <- function(object, parm, level = 0.95,...){
+  x <- object
+  args <- list(...)
+  df <- if("df"%in%names(args)) NULL else args[["df"]]
   if(is.null(df)){
-    cint <- c(x$result$margin - qnorm(1 - (1-level)/2)*x$result$SE, x$result$margin + qnorm(1 - (1-level)/2)*x$result$SE)
+    cint <- c(x$estimate - qnorm(1 - (1-level)/2)*x$se, x$estimate + qnorm(1 - (1-level)/2)*x$se)
   } else {
-    cint <- c(x$result$margin - qt(1 - (1-level)/2, df = df)*x$result$SE, x$result$margin + qt(1 - (1-level)/2, df = df)*x$result$SE)
+    cint <- c(x$estimate - qt(1 - (1-level)/2, df = df)*x$se, x$estimate + qt(1 - (1-level)/2, df = df)*x$se)
   }
    names(cint) <- c(paste0((1-level)*100/2,"%"),paste0(100-(1-level)*100/2,"%"))
    return(cint)

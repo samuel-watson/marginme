@@ -3,6 +3,7 @@
 S3method(confint,margin)
 S3method(print,margin)
 S3method(summary,margin)
+export(glmm_marginal)
 export(margin)
 importFrom(glmmrBase,Model)
 importFrom(glmmrBase,lme4_to_glmmr)

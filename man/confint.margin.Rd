@@ -37,7 +37,6 @@ m1 <- margin(fit,
        x = "Treatment",
        type = "ratio",
        average = c("x1","x2","x3","x4"),
-       re = "average",
-       se="GLS")
+       re = "average")
 confint(m1)
 }

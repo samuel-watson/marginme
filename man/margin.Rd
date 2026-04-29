@@ -9,7 +9,6 @@ margin(
   x,
   type,
   re,
-  se,
   at = c(),
   atmeans = c(),
   average = c(),
@@ -29,9 +28,6 @@ margin(
 
 \item{re}{String. Either `estimated` to condition on estimated values, `zero` to set to zero, `at` to
 provide specific values, or `average` to average over the random effects.}
-
-\item{se}{String. Type of standard error to use, either `GLS` for the GLS standard errors, `KR` for
-Kenward-Roger estimated standard errors, or `KR2` for the improved Kenward-Roger correction.}
 
 \item{at}{Optional. A vector of strings naming the fixed effects for which a specified value is given.}
 
@@ -78,16 +74,14 @@ m1 <- margin(fit,
        x = "Treatment",
        type = "ratio",
        average = c("x1","x2","x3","x4"),
-       re = "average",
-       se="GLS")
+       re = "average")
 summary(m1)
 ## stata default for margins command is to set random effects to zero
 m2 <- margin(fit,
        x = "Treatment",
        type = "ratio",
        average = c("x1","x2","x3","x4"),
-       re = "zero",
-       se="GLS")
+       re = "zero")
 summary(m2)
 ## finally estimate a risk difference, with random effects at zero and fixed effects
 ## at mean values
@@ -95,7 +89,6 @@ m3 <- margin(fit,
        x = "Treatment",
        type = "diff",
        atmeans = c("x1","x2","x3","x4"),
-       re = "zero",
-       se="GLS")
+       re = "zero")
 summary(m3)
 }
